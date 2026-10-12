@@ -1,2 +1,2 @@
 # Automatic-Image-Captioning-with-CNN-and-LSTM-
-I dont know, will write for later
+Link to the dataset: https://www.kaggle.com/datasets/adityajn105/flickr8k/data
