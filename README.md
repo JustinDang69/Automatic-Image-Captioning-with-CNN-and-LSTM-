@@ -11,14 +11,18 @@ NIT3251 Assessment 2: a CNN (VGG16) encoder + LSTM decoder that generates captio
 ├── pytest.ini
 ├── mermaid-diagram.png              # architecture diagram
 ├── src/
-│   └── data_preprocessing.py        # Flickr8k loading, cleaning, splitting, tokenizer, sequences
+│   ├── data_preprocessing.py        # Flickr8k loading, cleaning, splitting, tokenizer, sequences
+│   └── feature_extraction.py        # frozen VGG16 (fc2) -> 4,096-d feature per image
 ├── notebooks/
-│   └── 01_data_preparation.ipynb    # runs and explains the data pipeline
+│   ├── 01_data_preparation.ipynb    # runs and explains the data pipeline
+│   └── 02_vgg16_feature_extraction.ipynb
 ├── tests/
-│   └── test_data_preprocessing.py
+│   ├── test_data_preprocessing.py
+│   └── test_feature_extraction.py
 └── data/                            # NOT in Git (see below)
     ├── flickr8k/{Images/, captions.txt}
-    └── processed/                   # splits.json, tokenizer.json, metadata.json
+    ├── processed/                   # splits.json, tokenizer.json, metadata.json
+    └── features/                    # features.npy (8091, 4096), image_ids.json, metadata.json
 ```
 
 ## Setup (Windows / VS Code)
@@ -51,7 +55,10 @@ that contains `Images/` and `captions.txt`.
 ```powershell
 python -m pytest -v                                     # unit tests (full-dataset tests skip if data is missing)
 jupyter nbconvert --to notebook --execute --inplace notebooks/01_data_preparation.ipynb
+python -m src.feature_extraction                        # VGG16 features, ~20 min on CPU, resumable
 ```
+
+The first VGG16 run downloads the ImageNet weights (~528 MB) to `~/.keras/models/`.
 
 ## Data pipeline summary
 
@@ -65,3 +72,15 @@ jupyter nbconvert --to notebook --execute --inplace notebooks/01_data_preparatio
 | Next-word pairs | `create_sequences` | train X `(381317, 39)`, y `(381317,)` |
 
 The Kaggle version has no official split files, so the 80/10/10 split uses a fixed seed.
+
+## VGG16 features
+
+`python -m src.feature_extraction` passes each image once through a frozen ImageNet VGG16
+(input 224 x 224 x 3, `vgg16.preprocess_input`) and saves the 4,096-d `fc2` output.
+If interrupted, re-run the same command and it continues where it stopped.
+
+```python
+from src.feature_extraction import load_features
+features, row_of = load_features()                       # (8091, 4096) float32, {image_id: row}
+vec = features[row_of["1000268201_693b08cb0e.jpg"]]      # (4096,)
+```
