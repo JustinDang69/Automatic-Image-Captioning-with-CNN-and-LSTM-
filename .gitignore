@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Virtual environments
+.venv/
+venv/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Dataset and generated data (Flickr8k is ~1 GB; never commit it)
+data/
+
+# Model weights, extracted features and other large generated files
+*.h5
+*.keras
+*.weights.h5
+*.npy
+*.npz
+*.pkl
+models/
+outputs/
+
+# Credentials
+kaggle.json
+.env
+
+# Editors / OS
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store

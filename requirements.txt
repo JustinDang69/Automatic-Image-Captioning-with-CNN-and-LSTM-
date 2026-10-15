@@ -1,0 +1,9 @@
+# Tested on Windows 11, Python 3.12.10 with tensorflow 2.20.0 / keras 3.15.1 / numpy 2.5.4.
+tensorflow>=2.16        # includes Keras 3 (keras.utils.pad_sequences); VGG16 + LSTM in later tasks
+numpy
+matplotlib              # notebook plots
+pillow                  # opening images in the notebook
+kagglehub               # optional: download Flickr8k from Kaggle
+pytest                  # unit tests
+ipykernel               # run notebooks in VS Code
+nbconvert               # execute notebooks from the command line
