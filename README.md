@@ -9,7 +9,7 @@ NIT3251 Assessment 2: a CNN (VGG16) encoder + LSTM decoder that generates captio
 ├── README.md
 ├── requirements.txt
 ├── pytest.ini
-├── mermaid-diagram.png              # architecture diagram
+├── docs/updated_architecture.md    # current CNN–LSTM and decoding diagram
 ├── src/
 │   ├── data_preprocessing.py        # Flickr8k loading, cleaning, splitting, tokenizer, sequences
 │   ├── feature_extraction.py        # frozen VGG16 (fc2) -> 4,096-d feature per image
