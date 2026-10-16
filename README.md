@@ -17,7 +17,8 @@ NIT3251 Assessment 2: a CNN (VGG16) encoder + LSTM decoder that generates captio
 ├── notebooks/
 │   ├── 01_data_preparation.ipynb    # runs and explains the data pipeline
 │   ├── 02_vgg16_feature_extraction.ipynb
-│   └── 03_lstm_training.ipynb       # train, validate and plot decoder learning
+│   ├── 03_lstm_training.ipynb       # train, validate and plot decoder learning
+│   └── 04_lstm_code_explained.ipynb # explanations and lightweight demonstrations
 ├── tests/
 │   ├── test_data_preprocessing.py
 │   └── test_feature_extraction.py
@@ -96,7 +97,7 @@ After `python -m src.feature_extraction` completes and creates `data/features/fe
 python -m src.train_lstm --epochs 20 --batch-size 128
 ```
 
-Or open `notebooks/03_lstm_training.ipynb` in VS Code or Jupyter and execute its cells in order. VGG16 stays frozen; its saved 4,096-dimensional feature vectors feed the Dense(256) image branch. Captions are tokenised and padded into an Embedding(256) → LSTM(256) branch. The two 256-dimensional outputs are added, followed by Dense(256) and a vocabulary softmax next-word predictor. Loss is sparse categorical cross-entropy; the optimiser is Adam. Training uses only the training images and model selection uses validation images.
+Or open `notebooks/03_lstm_training.ipynb` in VS Code or Jupyter and execute its cells in order. For a detailed explanation of the code, open `notebooks/04_lstm_code_explained.ipynb`. The explanation notebook includes small synthetic examples and an **opt-in** full training cell, so you can study the architecture before using Flickr8k. VGG16 stays frozen; its saved 4,096-dimensional feature vectors feed the Dense(256) image branch. Captions are tokenised and padded into an Embedding(256) → LSTM(256) branch. The two 256-dimensional outputs are added, followed by Dense(256) and a vocabulary softmax next-word predictor. Loss is sparse categorical cross-entropy; the optimiser is Adam. Training uses only the training images and model selection uses validation images.
 
 Outputs under `models/lstm/`: `best_caption_model.keras`, `caption_model.keras`, `tokenizer.json`, `splits.json`, `metadata.json`, `training_history.csv`, `history.json`, `training_config.json` and `training_loss.png`.
 
