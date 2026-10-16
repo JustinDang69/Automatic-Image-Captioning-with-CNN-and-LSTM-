@@ -18,10 +18,11 @@ NIT3251 Assessment 2: a CNN (VGG16) encoder + LSTM decoder that generates captio
 │   ├── 01_data_preparation.ipynb    # runs and explains the data pipeline
 │   ├── 02_vgg16_feature_extraction.ipynb
 │   ├── 03_lstm_training.ipynb       # train, validate and plot decoder learning
-│   └── 04_lstm_code_explained.ipynb # explanations and lightweight demonstrations
+│   └── 04_colab_lstm_training.ipynb # Colab GPU training with Google Drive checkpoints
 ├── tests/
 │   ├── test_data_preprocessing.py
-│   └── test_feature_extraction.py
+│   ├── test_feature_extraction.py
+│   └── test_train_lstm.py
 └── data/                            # NOT in Git (see below)
     ├── flickr8k/{Images/, captions.txt}
     ├── processed/                   # splits.json, tokenizer.json, metadata.json
@@ -97,8 +98,21 @@ After `python -m src.feature_extraction` completes and creates `data/features/fe
 python -m src.train_lstm --epochs 20 --batch-size 128
 ```
 
-Or open `notebooks/03_lstm_training.ipynb` in VS Code or Jupyter and execute its cells in order. For a detailed explanation of the code, open `notebooks/04_lstm_code_explained.ipynb`. The explanation notebook includes small synthetic examples and an **opt-in** full training cell, so you can study the architecture before using Flickr8k. VGG16 stays frozen; its saved 4,096-dimensional feature vectors feed the Dense(256) image branch. Captions are tokenised and padded into an Embedding(256) → LSTM(256) branch. The two 256-dimensional outputs are added, followed by Dense(256) and a vocabulary softmax next-word predictor. Loss is sparse categorical cross-entropy; the optimiser is Adam. Training uses only the training images and model selection uses validation images.
+Or open `notebooks/03_lstm_training.ipynb` in VS Code or Jupyter and execute its cells in order. For GPU training on Google Colab, open `notebooks/04_colab_lstm_training.ipynb` (see below). VGG16 stays frozen; its saved 4,096-dimensional feature vectors feed the Dense(256) image branch. Captions are tokenised and padded into an Embedding(256) → LSTM(256) branch. The two 256-dimensional outputs are added, followed by Dense(256) and a vocabulary softmax next-word predictor. Loss is sparse categorical cross-entropy; the optimiser is Adam. Training uses only the training images and model selection uses validation images.
 
-Outputs under `models/lstm/`: `best_caption_model.keras`, `caption_model.keras`, `tokenizer.json`, `splits.json`, `metadata.json`, `training_history.csv`, `history.json`, `training_config.json` and `training_loss.png`.
+Outputs under `models/lstm/` (or `--output-dir`): `best_caption_model.keras`, `caption_model.keras` (copy of the best model), `last_checkpoint.keras`, `training_state.json`, `tokenizer.json`, `splits.json`, `metadata.json`, `training_history.csv`, `history.json`, `training_config.json` and `training_loss.png`.
+
+### Resuming and Google Colab
+
+Training saves `last_checkpoint.keras` (weights + optimizer) and `training_state.json` (epoch, early-stopping
+and learning-rate counters, history) after every epoch. Re-running the same command resumes from the last
+finished epoch; `--no-resume` starts again. Resuming is refused if the vocabulary or key settings changed.
+
+On Colab, `notebooks/04_colab_lstm_training.ipynb` mounts Google Drive and saves every epoch to
+`MyDrive/NIT3251_captioning/runs/<RUN_NAME>/`. Upload `data/features/{features.npy, image_ids.json,
+progress.npy, metadata.json}` to `MyDrive/NIT3251_captioning/features/` first; VGG16 is not re-run.
+
+The LSTM uses cuDNN on GPU. cuDNN cannot use a padding mask with our left-padded captions, so padding is not
+masked by default (`--mask-padding` enables a mask but disables cuDNN, which is much slower).
 
 **Next:** Implement greedy and beam-search caption generation and compute corpus BLEU on the reserved test images. Training accuracy alone is *not* the caption BLEU score.
