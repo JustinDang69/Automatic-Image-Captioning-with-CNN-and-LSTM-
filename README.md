@@ -115,4 +115,50 @@ progress.npy, metadata.json}` to `MyDrive/NIT3251_captioning/features/` first; V
 The LSTM uses cuDNN on GPU. cuDNN cannot use a padding mask with our left-padded captions, so padding is not
 masked by default (`--mask-padding` enables a mask but disables cuDNN, which is much slower).
 
-**Next:** Implement greedy and beam-search caption generation and compute corpus BLEU on the reserved test images. Training accuracy alone is *not* the caption BLEU score.
+## First complete GPU training run (17 October 2026)
+
+The group completed one real training run on Google Colab T4 using `notebooks/04_colab_lstm_training.ipynb`
+and the saved VGG16 fc2 features. Settings: `EPOCHS=20` (maximum), `BATCH_SIZE=128`,
+`LEARNING_RATE=0.001`, `DROPOUT=0.4`, early-stopping `PATIENCE=4`, seed 42.
+The image encoder is frozen; only the 5,591,062-parameter caption decoder was trained.
+
+| Metric | Recorded result |
+|---|---:|
+| Training images / next-word pairs | 6,472 / 381,317 |
+| Validation images / next-word pairs | 809 / 47,982 |
+| Held-out test images (not used during training) | 810 |
+| Epochs run | 9 (early stopped) |
+| Best epoch, chosen by validation loss | 5 |
+| Best validation loss | **3.3437** |
+| Next-word validation accuracy at best epoch | **38.20%** |
+| Training loss at best epoch | 3.0273 |
+
+Validation loss improved through epoch 5, then increased slightly as training loss continued
+to fall; the best checkpoint, rather than the last epoch's weights, is used for downstream evaluation.
+Next-word accuracy is measured with the correct caption prefix (teacher forcing), **not** the fraction
+of acceptable generated captions. Caption quality still needs evaluation using actual decoded
+sentences, corpus BLEU-1 through BLEU-4, and qualitative examples on the reserved test images.
+
+### Trained artifacts and reproduction
+
+The first run's outputs are in the project owner's **private/shared Google Drive** folder
+`MyDrive/NIT3251_captioning/runs/lstm_run1/` (not part of this Git repository). Ask the project
+owner for folder access; this README does not imply that the folder is public.
+
+- `caption_model.keras`: **best** checkpoint to load for inference; `best_caption_model.keras` is
+  the corresponding saved best model.
+- `tokenizer.json`, `splits.json`, `metadata.json`: vocabulary, image split and model metadata.
+- `training_loss.png`, `training_history.csv`, `history.json`: report figure and epoch metrics.
+- `last_checkpoint.keras`, `training_state.json`: resume state; not the preferred inference weights.
+
+For a fresh Colab reproduction, use the notebook on `main`, set `REPO_BRANCH="main"` in its
+first settings cell, provide the four existing feature files under
+`MyDrive/NIT3251_captioning/features/`, and choose a **new** `RUN_NAME` so that the
+original checkpoints are not overwritten. Set `RUN_TRAINING=True` to run full training.
+For a quick environment check only, keep `RUN_TRAINING=False` and `SMOKE_TEST=True`.
+Google Colab automatically pulls the Flickr8k captions and images from Kaggle if necessary.
+
+**Next:** Kevan implements greedy/standard beam search, Abdul evaluates length-normalised beam
+search and top-k sampling. Compare all methods on the **same trained model and reserved test images**,
+report actual BLEU-1 to BLEU-4 results and include reference/generated caption examples;
+no BLEU outcomes are claimed yet.
