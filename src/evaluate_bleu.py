@@ -42,7 +42,7 @@ def load_artifacts():
     feature_dict = {img_id: features[i] for i, img_id in enumerate(image_ids)}
     return model, tokenizer, feature_dict
 
-def generate_caption(model, tokenizer, photo_feature, max_length, strategy='greedy', k=3):
+def generate_caption(model, tokenizer, photo_feature, max_length, strategy='greedy', top_k=3):
     in_text = 'startseq'
     for i in range(max_length):
         sequence = tokenizer.texts_to_sequences([in_text])[0]
@@ -51,7 +51,7 @@ def generate_caption(model, tokenizer, photo_feature, max_length, strategy='gree
         yhat = model.predict([np.array([photo_feature]), sequence], verbose=0)[0]
         
         if strategy == 'top_k':
-            word_id = top_k_sampling(yhat, k=k)
+            word_id = top_k_sampling(yhat, top_k= top_k)
         else: 
             word_id = int(np.argmax(yhat))
             
@@ -82,9 +82,9 @@ def beam_search_caption(model, tokenizer, photo_feature, max_length, beam_width=
             padded_seq = pad_sequences([seq], maxlen=max_length)
             yhat = model.predict([np.array([photo_feature]), padded_seq], verbose=0)[0]
             
-            top_k_indices = np.argsort(yhat)[-beam_width:]
+            beam_indices = np.argsort(yhat)[-beam_width:]
             
-            for word_id in top_k_indices:
+            for word_id in beam_indices:
                 prob = yhat[word_id]
                 log_prob = np.log(prob + 1e-10) # Avoid log(0)
                 new_score = score + log_prob
@@ -104,7 +104,7 @@ def beam_search_caption(model, tokenizer, photo_feature, max_length, beam_width=
     words = [tokenizer.index_word.get(idx) for idx in best_seq if idx not in [start_id, end_id] and idx is not None]
     return ' '.join(words)
 
-def evaluate_model(model, tokenizer, features, test_dict, max_length, strategy='greedy'):
+def evaluate_model(model, tokenizer, features, test_dict, max_length, strategy='greedy', beam_width=3, top_k=3, alpha=0.7):
     actual, predicted = list(), list()
     
     print(f"\nEvaluating {strategy.upper()} strategy...")
@@ -113,18 +113,25 @@ def evaluate_model(model, tokenizer, features, test_dict, max_length, strategy='
             continue
             
         if strategy in ['greedy', 'top_k']:
-            yhat = generate_caption(model, tokenizer, features[img_id], max_length, strategy=strategy)
+            yhat = generate_caption(model, tokenizer, features[img_id], max_length, strategy=strategy, top_k=top_k)
         else:
-            yhat = beam_search_caption(model, tokenizer, features[img_id], max_length, strategy=strategy)
+            yhat = beam_search_caption(model, tokenizer, features[img_id], max_length, beam_width=beam_width, strategy=strategy, alpha=alpha)
             
         references = [ref.split() for ref in ref_captions]
         actual.append(references)
         predicted.append(yhat.split())
         
-    print(f"BLEU-1: {corpus_bleu(actual, predicted, weights=(1.0, 0, 0, 0)):.4f}")
-    print(f"BLEU-2: {corpus_bleu(actual, predicted, weights=(0.5, 0.5, 0, 0)):.4f}")
-    print(f"BLEU-3: {corpus_bleu(actual, predicted, weights=(0.33, 0.33, 0.33, 0)):.4f}")
-    print(f"BLEU-4: {corpus_bleu(actual, predicted, weights=(0.25, 0.25, 0.25, 0.25)):.4f}")
+    scores = {
+        "BLEU-1": round(float(corpus_bleu(actual, predicted, weights=(1.0, 0, 0, 0))), 4),
+        "BLEU-2": round(float(corpus_bleu(actual, predicted, weights=(0.5, 0.5, 0, 0))), 4),
+        "BLEU-3": round(float(corpus_bleu(actual, predicted, weights=(0.33, 0.33, 0.33, 0))), 4),
+        "BLEU-4": round(float(corpus_bleu(actual, predicted, weights=(0.25, 0.25, 0.25, 0.25))), 4),
+    }
+    
+    for metric, score in scores.items():
+        print(f"{metric}: {score:.4f}")
+        
+    return scores
 
 if __name__ == '__main__':
     model, tokenizer, feature_dict = load_artifacts()
@@ -150,10 +157,18 @@ if __name__ == '__main__':
                 clean_caption = caption.lower().strip()
                 test_data[image_id].append(clean_caption)
     
- 
-    # evaluate_modsave time, comment out the two we already calculatedel(model, tokenizer, feature_dict, test_data, max_len, strategy='greedy')
-    # evaluate_model(model, tokenizer, feature_dict, test_data, max_len, strategy='top_k')
+    results = {}
+    strategies = ['greedy', 'top_k', 'beam_search', 'length_norm']
     
-    # Run the remaining evaluations
-    evaluate_model(model, tokenizer, feature_dict, test_data, max_len, strategy='beam_search')
-    evaluate_model(model, tokenizer, feature_dict, test_data, max_len, strategy='length_norm')
+    for strat in strategies:
+        results[strat] = evaluate_model(
+            model, tokenizer, feature_dict, test_data, max_len,
+            strategy=strat, beam_width=3, top_k=3, alpha=0.7
+        )
+        
+    json_path = os.path.join(PROJECT_ROOT, 'bleu_results.json')
+    with open(json_path, 'w', encoding='utf-8') as f:
+        json.dump(results, f, indent=4)
+        
+    print(f"\nReproducible evaluation saved to {json_path}")
+  

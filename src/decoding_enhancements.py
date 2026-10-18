@@ -18,8 +18,8 @@ def length_normalize_score(raw_score, sequence_length, alpha=0.7):
     safe_length = max(sequence_length, 1)  # Prevent division by zero
     return raw_score / (safe_length ** alpha)
 
-
-def top_k_sampling(probabilities, k=3, seed=None):
+#chaned k=3 to top_avoid to avoid confusion with the k in 
+def top_k_sampling(probabilities, top_k=3, seed=None):
     """
     Selects the next word token using Top-k sampling to add controlled variety.
     
@@ -38,7 +38,7 @@ def top_k_sampling(probabilities, k=3, seed=None):
     probs_1d = np.asarray(probabilities).flatten()
         
     # Find the indices of the top-k probabilities
-    top_k_indices = np.argsort(probs_1d)[-k:]
+    top_k_indices = np.argsort(probs_1d)[-top_k:]
     
     # Get the actual probability values for those indices
     top_k_probs = probs_1d[top_k_indices]
