@@ -272,55 +272,6 @@ def save_example_figure(assets, examples, output_file):
     fig.savefig(output_file, dpi=140, bbox_inches="tight")
     plt.close(fig)
 
-
-def evaluate_bleu(assets, beam_widths=(3, 5), max_images=None):
-    """CORPUS BLEU-1..4 on the saved held-out test split (all 5 references).
-
-    max_images is for a quick *exploratory* run only. Final reported values
-    should use all test images with max_images=None.
-    """
-    from nltk.translate.bleu_score import corpus_bleu
-
-    test_ids = assets.splits["test"]
-    if max_images is not None:
-        if max_images <= 0:
-            raise ValueError("max_images must be positive")
-        test_ids = test_ids[:max_images]
-    names = ["greedy", *[f"beam_{k}" for k in beam_widths]]
-    predictions = {name: [] for name in names}
-    references = []
-    durations = {name: [] for name in names}
-
-    for i, image_id in enumerate(test_ids, start=1):
-        item = decode_image(assets, image_id, beam_widths=beam_widths)
-        references.append([_reference_tokens(c) for c in assets.references[image_id]])
-        for name in names:
-            predictions[name].append(item[name].split())
-            durations[name].append(item["seconds"][name])
-        if i % 100 == 0:
-            print(f"Captioned {i}/{len(test_ids)} test images", flush=True)
-
-    weights = {
-        "BLEU-1": (1., 0., 0., 0.),
-        "BLEU-2": (.5, .5, 0., 0.),
-        "BLEU-3": (1/3, 1/3, 1/3, 0.),
-        "BLEU-4": (.25, .25, .25, .25),
-    }
-    metrics = {}
-    for name in names:
-        metrics[name] = {
-            key: float(corpus_bleu(references, predictions[name], weights=weight))
-            for key, weight in weights.items()
-        }
-        metrics[name]["avg_seconds_per_caption"] = float(np.mean(durations[name]))
-    return {
-        "split": "test",
-        "images_evaluated": len(test_ids),
-        "full_test_set": len(test_ids) == len(assets.splits["test"]),
-        "scores": metrics,
-    }
-
-
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Flickr8k greedy and beam-search decoding")
     parser.add_argument("--model-dir", default="models/lstm",
