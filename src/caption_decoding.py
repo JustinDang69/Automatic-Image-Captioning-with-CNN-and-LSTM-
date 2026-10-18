@@ -12,7 +12,7 @@ Run from repository root:
     python -m src.caption_decoding --model-dir models/lstm --eval-test
 
 Output: reference/greedy/beam captions in caption_examples.json, a PNG
-comparison figure, and optional held-out corpus BLEU-1..4 evaluation.
+comparison figure.
 """
 from __future__ import annotations
 
