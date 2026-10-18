@@ -7,3 +7,6 @@ kagglehub               # optional: download Flickr8k from Kaggle
 pytest                  # unit tests
 ipykernel               # run notebooks in VS Code
 nbconvert               # execute notebooks from the command line
+
+nltk                    # corpus BLEU-1..4 for decoded captions
+pandas                  # notebook comparison table
