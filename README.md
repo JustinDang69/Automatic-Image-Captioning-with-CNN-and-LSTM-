@@ -162,3 +162,21 @@ Google Colab automatically pulls the Flickr8k captions and images from Kaggle if
 search and top-k sampling. Compare all methods on the **same trained model and reserved test images**,
 report actual BLEU-1 to BLEU-4 results and include reference/generated caption examples;
 no BLEU outcomes are claimed yet.
+
+
+## Greedy and beam-search caption generation (test images)
+
+After LSTM training, load the **best** saved model, original tokenizer/splits, and extracted VGG16 features. You can run `notebooks/05_greedy_beam_examples.ipynb` in Colab to show the original test image, **all five references**, and generated greedy / beam-3 / beam-5 captions.
+
+Locally from the repository root:
+
+```bash
+python -m src.caption_decoding --model-dir models/lstm --num-examples 6
+python -m src.caption_decoding --model-dir models/lstm --eval-test
+```
+
+For Colab, the notebook is preconfigured for `MyDrive/NIT3251_captioning/runs/lstm_run1/` (trained checkpoint) and `MyDrive/NIT3251_captioning/features/` (extracted VGG16 features). The checkpoint is private and **not** uploaded to GitHub; it must be available in Drive. The notebook downloads Flickr8k via Kaggle if you have not saved the dataset under your Drive project folder.
+
+`src/caption_decoding.py` implements two strategies on the **same** trained decoder: greedy argmax and standard beam search ranked by cumulative log probability, default k=3 and k=5 (**no length normalization**). Both suppress PAD, START and unknown word generation, stop at END, and enforce the maximum caption length. The CLI saves `caption_examples.json` and `caption_examples.png`. With `--eval-test`, it also saves `bleu_comparison.json` containing corpus BLEU-1..BLEU-4 and time per caption using all five reference captions for each held-out test image (full 810-image test set by default).
+
+**Important:** Actual generated captions and BLEU scores require loading and running your saved `.keras` model. A decoding notebook is not proof of an actual result until it has been executed against the trained checkpoint. A limited `--eval-limit` run is exploratory only, not a final test-set score.
