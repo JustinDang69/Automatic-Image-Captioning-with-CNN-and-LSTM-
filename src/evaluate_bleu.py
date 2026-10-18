@@ -8,39 +8,11 @@ from tensorflow.keras.preprocessing.sequence import pad_sequences
 from nltk.translate.bleu_score import corpus_bleu
 from decoding_enhancements import length_normalize_score, top_k_sampling
 
+from caption_decoding import load_assets, _reference_tokens
+
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(os.path.join(PROJECT_ROOT, 'src'))
 
-def load_artifacts():
-    print("Loading model and features...")
-    model = load_model(os.path.join(PROJECT_ROOT, 'models', 'best_caption_model.keras'))
-    
-    tokenizer_path = os.path.join(PROJECT_ROOT, 'models', 'tokenizer.json')
-    with open(tokenizer_path, 'r', encoding='utf-8') as f:
-        data = json.load(f)
-        
-    from tensorflow.keras.preprocessing.text import Tokenizer
-    tokenizer = Tokenizer()
-    
-    if 'word_index' in data:
-        raw_word_index = data['word_index']
-    elif 'config' in data and 'word_index' in data['config']:
-        raw_word_index = data['config']['word_index']
-    else:
-        raw_word_index = data
-        
-    if isinstance(raw_word_index, str):
-        raw_word_index = json.loads(raw_word_index)
-        
-    tokenizer.word_index = raw_word_index
-    tokenizer.index_word = {int(v): str(k) for k, v in raw_word_index.items()}
-        
-    features = np.load(os.path.join(PROJECT_ROOT, 'data', 'features', 'features.npy'))
-    with open(os.path.join(PROJECT_ROOT, 'data', 'features', 'image_ids.json'), 'r', encoding='utf-8') as f:
-        image_ids = json.load(f)
-        
-    feature_dict = {img_id: features[i] for i, img_id in enumerate(image_ids)}
-    return model, tokenizer, feature_dict
 
 def generate_caption(model, tokenizer, photo_feature, max_length, strategy='greedy', top_k=3):
     in_text = 'startseq'
@@ -134,29 +106,22 @@ def evaluate_model(model, tokenizer, features, test_dict, max_length, strategy='
     return scores
 
 if __name__ == '__main__':
-    model, tokenizer, feature_dict = load_artifacts()
-    max_len = 39 
+    print("Loading test splits and references using baseline loader...")
+    # This single line replaces all your manual loading code
+    assets = load_assets(os.path.join(PROJECT_ROOT, 'models'))
     
-    print("Loading test splits and references...")
-    with open(os.path.join(PROJECT_ROOT, 'data', 'processed', 'splits.json'), 'r', encoding='utf-8') as f:
-        splits = json.load(f)
-    
-    test_image_ids = set(splits['test'])
+    max_len = assets.max_length
+    model = assets.model
+    tokenizer = assets.tokenizer
+    feature_dict = {img_id: assets.features[assets.row_of[img_id]] 
+                    for img_id in assets.splits['test']}
     
     test_data = {}
-    with open(os.path.join(PROJECT_ROOT, 'data', 'flickr8k', 'captions.txt'), 'r', encoding='utf-8') as f:
-        lines = f.read().split('\n')
-        for line in lines[1:]: 
-            if len(line) < 2:
-                continue
-            image_id, caption = line.split(',', 1)
+    for img_id in assets.splits['test']:
+        if img_id in assets.references:
+            # Kevan's _reference_tokens matches the project's exact text cleaning
+            test_data[img_id] = [" ".join(_reference_tokens(ref)) for ref in assets.references[img_id]]
             
-            if image_id in test_image_ids:
-                if image_id not in test_data:
-                    test_data[image_id] = []
-                clean_caption = caption.lower().strip()
-                test_data[image_id].append(clean_caption)
-    
     results = {}
     strategies = ['greedy', 'top_k', 'beam_search', 'length_norm']
     
@@ -171,4 +136,3 @@ if __name__ == '__main__':
         json.dump(results, f, indent=4)
         
     print(f"\nReproducible evaluation saved to {json_path}")
-  
