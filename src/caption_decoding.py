@@ -8,11 +8,11 @@ tokenizer.json, metadata.json, splits.json), plus saved VGG16 features.
 No Flickr8k data or trained model is bundled with this source code.
 
 Run from repository root:
-    python -m src.caption_decoding --model-dir models/lstm --num-examples 6
-    python -m src.caption_decoding --model-dir models/lstm --eval-test
+    python -m src.caption_decoding --model-dir models/lstm --beam-width 3
+    python -m src.caption_decoding --model-dir models/lstm --beam-width 5 --eval-test
 
-Output: reference/greedy/beam captions in caption_examples.json, a PNG
-comparison figure.
+One configurable beam width is used per run. Output files are saved in a
+beam-width-specific folder, so changing k does not overwrite prior experiments.
 """
 from __future__ import annotations
 
@@ -198,8 +198,14 @@ def load_assets(model_dir, features_dir=DEFAULT_FEATURES_DIR, data_dir=None):
                          features, row_of, images_dir, references)
 
 
-def decode_image(assets, image_id, beam_widths=(3, 5)):
-    """Caption one known Flickr8k image with both decoding methods."""
+def decode_image(assets, image_id, beam_width=3):
+    """Generate exactly one greedy and one beam-search caption for an image.
+
+    `beam_width` controls how many *internal candidate sequences* beam search
+    retains. There is only one beam-search output per image per run.
+    """
+    if not isinstance(beam_width, int) or beam_width < 1:
+        raise ValueError("beam_width must be a positive integer")
     if image_id not in assets.row_of:
         raise KeyError(f"Missing VGG16 features for {image_id}")
     if image_id not in assets.references:
@@ -209,36 +215,42 @@ def decode_image(assets, image_id, beam_widths=(3, 5)):
     t0 = time.perf_counter()
     greedy = greedy_decode(assets.model, vector, assets.tokenizer, assets.max_length)
     greedy_time = time.perf_counter() - t0
-    beams, timings = {}, {}
-    for k in beam_widths:
-        t0 = time.perf_counter()
-        beams[f"beam_{k}"] = beam_search_decode(
-            assets.model, vector, assets.tokenizer, assets.max_length, beam_width=k
-        )
-        timings[f"beam_{k}"] = time.perf_counter() - t0
+
+    t0 = time.perf_counter()
+    beam = beam_search_decode(
+        assets.model, vector, assets.tokenizer, assets.max_length,
+        beam_width=beam_width,
+    )
+    beam_time = time.perf_counter() - t0
 
     return {
         "image_id": image_id,
         "references": [" ".join(_reference_tokens(c)) for c in assets.references[image_id]],
         "greedy": greedy,
-        **beams,
-        "seconds": {"greedy": round(greedy_time, 3),
-                    **{key: round(val, 3) for key, val in timings.items()}},
+        "beam": beam,
+        "beam_width": beam_width,
+        "seconds": {
+            "greedy": round(greedy_time, 3),
+            "beam": round(beam_time, 3),
+        },
     }
 
 
-def example_captions(assets, num_examples=6, seed=42, beam_widths=(3, 5),
+def example_captions(assets, num_examples=6, seed=42, beam_width=3,
                      split="test"):
-    """Reproducibly sample held-out images and generate real model predictions."""
+    """Reproducibly sample held-out images; run greedy + ONE beam width."""
     if split not in ("test", "val"):
         raise ValueError("Use validation or held-out test images for examples")
     if num_examples <= 0:
         raise ValueError("num_examples must be positive")
+    if not isinstance(beam_width, int) or beam_width < 1:
+        raise ValueError("beam_width must be a positive integer")
     ids = assets.splits[split]
     if not ids:
         raise ValueError(f"No images in {split} split")
     chosen = random.Random(seed).sample(ids, min(num_examples, len(ids)))
-    return [decode_image(assets, image_id, beam_widths) for image_id in chosen]
+    return [decode_image(assets, image_id, beam_width=beam_width)
+            for image_id in chosen]
 
 
 def save_example_figure(assets, examples, output_file):
@@ -258,9 +270,11 @@ def save_example_figure(assets, examples, output_file):
         lines = ["Human reference captions:"]
         lines += [textwrap.fill(f"  {i}. {ref}", width=67, subsequent_indent="     ")
                   for i, ref in enumerate(item["references"], start=1)]
-        lines += ["", "Greedy: " + item["greedy"]]
-        lines += [f"{name.replace('_', ' ').title()}: {value}"
-                  for name, value in item.items() if name.startswith("beam_")]
+        lines += [
+            "",
+            "Greedy: " + item["greedy"],
+            f"Beam (k={item['beam_width']}): " + item["beam"],
+        ]
         text_ax.text(0.01, 0.97, "\n".join(
             textwrap.fill(line, width=72, subsequent_indent="    ") if len(line) > 72 else line
             for line in lines
@@ -272,6 +286,58 @@ def save_example_figure(assets, examples, output_file):
     fig.savefig(output_file, dpi=140, bbox_inches="tight")
     plt.close(fig)
 
+def evaluate_bleu(assets, beam_width=3, max_images=None):
+    """Compare greedy against a SINGLE beam width using corpus BLEU-1..4.
+
+    Final evaluation should use all held-out test images (max_images=None).
+    Restricted image counts are exploratory, not final performance results.
+    """
+    from nltk.translate.bleu_score import corpus_bleu
+
+    if not isinstance(beam_width, int) or beam_width < 1:
+        raise ValueError("beam_width must be a positive integer")
+    ids = assets.splits["test"]
+    if max_images is not None:
+        if max_images <= 0:
+            raise ValueError("max_images must be positive")
+        ids = ids[:max_images]
+    if not ids:
+        raise ValueError("No held-out test images available")
+
+    references = []
+    hypotheses = {"greedy": [], "beam": []}
+    elapsed = {"greedy": [], "beam": []}
+    for i, image_id in enumerate(ids, 1):
+        item = decode_image(assets, image_id, beam_width=beam_width)
+        references.append([_reference_tokens(c) for c in assets.references[image_id]])
+        for method in hypotheses:
+            hypotheses[method].append(item[method].split())
+            elapsed[method].append(item["seconds"][method])
+        if i % 100 == 0:
+            print(f"Decoded {i}/{len(ids)} test images", flush=True)
+
+    weights = {
+        "BLEU-1": (1., 0., 0., 0.),
+        "BLEU-2": (.5, .5, 0., 0.),
+        "BLEU-3": (1 / 3, 1 / 3, 1 / 3, 0.),
+        "BLEU-4": (.25, .25, .25, .25),
+    }
+    scores = {}
+    for method, captions in hypotheses.items():
+        scores[method] = {
+            name: float(corpus_bleu(references, captions, weights=weight))
+            for name, weight in weights.items()
+        }
+        scores[method]["avg_seconds_per_caption"] = float(np.mean(elapsed[method]))
+    return {
+        "split": "test",
+        "beam_width": beam_width,
+        "images_evaluated": len(ids),
+        "full_test_set": len(ids) == len(assets.splits["test"]),
+        "scores": scores,
+    }
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Flickr8k greedy and beam-search decoding")
     parser.add_argument("--model-dir", default="models/lstm",
@@ -280,35 +346,38 @@ def main(argv=None):
     parser.add_argument("--data-dir", default=None)
     parser.add_argument("--output-dir", default="models/lstm/decoding_results")
     parser.add_argument("--num-examples", type=int, default=6)
-    parser.add_argument("--beam-widths", type=int, nargs="+", default=[3, 5])
+    parser.add_argument("--beam-width", type=int, default=3,
+                        help="One beam width k per run, e.g. 3 or 5")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--eval-test", action="store_true",
-                        help="Also calculate corpus BLEU on held-out test images")
+                        help="Calculate corpus BLEU-1 to BLEU-4 on the test split")
     parser.add_argument("--eval-limit", type=int, default=None,
-                        help="Exploratory BLEU only: limit number of test images")
+                        help="Exploratory evaluation on only the first N test images")
     args = parser.parse_args(argv)
-    widths = tuple(dict.fromkeys(args.beam_widths))
-    if any(k < 1 for k in widths):
-        parser.error("Every beam width must be >= 1")
+    if args.beam_width < 1:
+        parser.error("--beam-width must be >= 1")
 
     assets = load_assets(args.model_dir, args.features_dir, args.data_dir)
-    output = Path(args.output_dir)
+    output = Path(args.output_dir) / f"beam_k{args.beam_width}"
     output.mkdir(parents=True, exist_ok=True)
-    examples = example_captions(assets, args.num_examples, args.seed, widths)
+
+    examples = example_captions(assets, args.num_examples, args.seed,
+                                beam_width=args.beam_width)
     for item in examples:
-        print(f"\n{item['image_id']}")
+        print(f"\\n{item['image_id']}")
         print("Reference:", item["references"][0])
         print("Greedy:   ", item["greedy"])
-        for k in widths:
-            print(f"Beam {k}:   ", item[f"beam_{k}"])
+        print(f"Beam k={args.beam_width}:", item["beam"])
+
     (output / "caption_examples.json").write_text(
         json.dumps(examples, indent=2), encoding="utf-8"
     )
     save_example_figure(assets, examples, output / "caption_examples.png")
-    print(f"\nSaved examples to {output.resolve()}")
+    print(f"\\nSaved examples to {output.resolve()}")
 
     if args.eval_test:
-        result = evaluate_bleu(assets, widths, args.eval_limit)
+        result = evaluate_bleu(assets, beam_width=args.beam_width,
+                               max_images=args.eval_limit)
         (output / "bleu_comparison.json").write_text(
             json.dumps(result, indent=2), encoding="utf-8"
         )
