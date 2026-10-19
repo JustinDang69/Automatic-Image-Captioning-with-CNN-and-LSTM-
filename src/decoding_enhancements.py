@@ -6,6 +6,8 @@ They are used by ``src.caption_decoding.beam_search_decode(alpha=...)`` and
 """
 import numpy as np
 
+# Purpose: Adjusts a cumulative log-probability by sequence length raised to alpha.
+# Implementation: The adjustment reduces the short-sequence preference that arises when negative log-probabilities are summed.
 def length_normalize_score(raw_score, sequence_length, alpha=0.7):
     """
     Normalizes a sequence score to prevent bias against longer captions in Beam Search.
@@ -26,6 +28,7 @@ def length_normalize_score(raw_score, sequence_length, alpha=0.7):
     return raw_score / (safe_length ** alpha)
 
 
+# Purpose: validate top k; see the function docstring for parameters, outputs and validation behavior.
 def validate_top_k(top_k):
     """Raise ValueError unless ``top_k`` is a positive integer (k=1 behaves like greedy)."""
     if isinstance(top_k, bool) or not isinstance(top_k, (int, np.integer)) or top_k < 1:
@@ -33,6 +36,8 @@ def validate_top_k(top_k):
 
 
 # Parameter renamed from k to top_k to avoid confusion with the beam width k.
+# Purpose: Samples from a restricted set of likely next-token candidates after excluding prohibited token IDs.
+# Implementation: Probabilities are renormalized within the allowed top-k set before drawing a token.
 def top_k_sampling(probabilities, top_k=3, rng=None, banned_indices=None):
     """Sample the next token from the ``top_k`` most likely valid tokens.
 
