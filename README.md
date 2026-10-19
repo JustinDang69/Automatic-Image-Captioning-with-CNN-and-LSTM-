@@ -180,3 +180,25 @@ For Colab, the notebook is preconfigured for `MyDrive/NIT3251_captioning/runs/ls
 `src/caption_decoding.py` implements two strategies on the **same** trained decoder: greedy argmax and standard beam search ranked by cumulative log probability, default k=3 and k=5 (**no length normalization**). Both suppress PAD, START and unknown word generation, stop at END, and enforce the maximum caption length. The CLI saves `caption_examples.json` and `caption_examples.png`. With `--eval-test`, it also saves `bleu_comparison.json` containing corpus BLEU-1..BLEU-4 and time per caption using all five reference captions for each held-out test image (full 810-image test set by default).
 
 **Important:** Actual generated captions and BLEU scores require loading and running your saved `.keras` model. A decoding notebook is not proof of an actual result until it has been executed against the trained checkpoint. A limited `--eval-limit` run is exploratory only, not a final test-set score.
+
+## Decoding innovations: Top-k sampling and length-normalised beam search
+
+`src/decoding_enhancements.py` (Abdul) adds two inference-time options to the **same** decoders and trained model:
+
+- **Top-k sampling** — `greedy_decode(..., top_k=k, rng=np.random.default_rng(seed))` samples each next word from the k most likely valid words (PAD, startseq and `<unk>` are never sampled). `top_k=None` is the unchanged greedy baseline; `top_k < 1` is rejected.
+- **Length-normalised beam search** — `beam_search_decode(..., alpha=0.7)` ranks hypotheses by `log probability / length**alpha`, where length counts the hypothesis tokens including `startseq` (and `endseq` once finished). `alpha=0` is the unchanged standard beam search.
+
+`tests/test_decoding_regression.py` checks that, with both options disabled, captions are identical to the approved greedy/beam implementation that produced the baseline BLEU scores.
+
+Evaluate both innovations on all held-out test images with the baseline protocol (same checkpoint, tokenizer, max length, split, cleaned five references and BLEU weights). Run from the repository root, e.g. on Colab:
+
+```bash
+python -m src.evaluate_bleu \
+  --model-dir /content/drive/MyDrive/NIT3251_captioning/runs/lstm_run1 \
+  --features-dir /content/drive/MyDrive/NIT3251_captioning/features \
+  --data-dir "$FLICKR8K_DIR" \
+  --top-k 3 --seed 42 --beam-width 3 --alpha 0.7 \
+  --output-json /content/drive/MyDrive/NIT3251_captioning/runs/lstm_run1/decoding_results/innovations_topk3_seed42_lnbeam3_alpha0.7.json
+```
+
+The JSON records the model file, best epoch, image count, parameters, seed, BLEU-1..4 scores, every generated caption and the number of empty captions. Use `--methods top_k` or `--methods length_norm` to run one method. No innovation BLEU scores are claimed until this has been run on the trained checkpoint.
