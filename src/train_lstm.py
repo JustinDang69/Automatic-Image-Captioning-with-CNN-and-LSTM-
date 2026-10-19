@@ -39,6 +39,7 @@ FINAL_MODEL_FILE = "caption_model.keras"       # copy of the best model when tra
 STATE_FILE = "training_state.json"
 
 
+# Q&A: Serve mini-batches of (4096-d image vectors, padded caption prefixes) and integer next-word targets. WHY: Avoid copying one image vector for every prefix.
 class CaptionBatches(keras.utils.PyDataset):
     """Get VGG16 vectors only for caption prefixes in the current batch.
 
@@ -82,6 +83,7 @@ class CaptionBatches(keras.utils.PyDataset):
             self.rng.shuffle(self.order)
 
 
+# Q&A: IMAGE 4096 -> Dense(256); TEXT token IDs -> Embedding(256) -> LSTM(256); Add combines same-shaped vectors; Dense+softmax predicts a vocabulary word. WHY: Train conditional next-word prediction.
 def build_caption_model(vocab_size: int, max_length: int, learning_rate=0.001,
                         embedding_dim=256, lstm_units=256, dropout=0.4,
                         mask_padding=False):
@@ -133,6 +135,7 @@ def build_caption_model(vocab_size: int, max_length: int, learning_rate=0.001,
     return model
 
 
+# Q&A: Build train/validation batches from preprocessed data and cached visual features, keeping image IDs aligned.
 def prepare_batches(prepared, features, row_of, split, batch_size=128, seed=42,
                     max_images=None):
     """Fit labels/tokenizer on train only; train/val use identical vocabulary.
@@ -202,6 +205,7 @@ def load_training_state(output_dir) -> dict | None:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+# Q&A: Track validation metrics, save checkpoints and allow resuming interrupted Colab sessions. WHY: GPU sessions may disconnect, and best validation epoch should be retained.
 class ResumableTraining(keras.callbacks.Callback):
     """Checkpointing, early stopping and learning-rate reduction that survive restarts.
 
@@ -293,6 +297,7 @@ def save_history(history, out: Path) -> None:
 # Training entry point
 # ---------------------------------------------------------------------------
 
+# Q&A: Train the LSTM decoder using frozen VGG16 features. Best epoch was 5 (validation loss 3.3437); later validation loss worsened, suggesting overfitting.
 def train(data_dir=None, features_dir=DEFAULT_FEATURES_DIR, output_dir="models/lstm",
           epochs=20, batch_size=128, learning_rate=0.001, dropout=0.4,
           patience=4, seed=42, min_count=1, resume=True, max_images=None,
