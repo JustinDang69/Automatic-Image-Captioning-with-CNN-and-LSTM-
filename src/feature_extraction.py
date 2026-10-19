@@ -54,6 +54,9 @@ METADATA_FILE = "metadata.json"
 # Encoder
 # ---------------------------------------------------------------------------
 
+# Purpose: Builds a frozen pretrained VGG16 encoder whose output is taken from fc2.
+# Implementation: The 4,096-dimensional intermediate representation preserves richer visual information than the 1,000-way classification output.
+# Design rationale: Freezing the encoder allows cached features to be reused without fitting VGG16 on Flickr8k.
 def build_encoder(weights: str | None = "imagenet"):
     """Return a frozen VGG16 that maps (batch, 224, 224, 3) images to (batch, 4096).
 
@@ -87,6 +90,7 @@ def build_encoder(weights: str | None = "imagenet"):
 # Image loading and VGG16 preprocessing
 # ---------------------------------------------------------------------------
 
+# Purpose: load image; see the function docstring for parameters, outputs and validation behavior.
 def load_image(path: str | os.PathLike) -> np.ndarray:
     """Load one image as a float32 RGB array of shape (224, 224, 3), values 0-255.
 
@@ -101,6 +105,7 @@ def load_image(path: str | os.PathLike) -> np.ndarray:
     return img_to_array(img, dtype="float32")
 
 
+# Purpose: preprocess batch; see the function docstring for parameters, outputs and validation behavior.
 def preprocess_batch(images: np.ndarray) -> np.ndarray:
     """Apply VGG16's own preprocessing to a batch of RGB 0-255 images.
 
@@ -121,6 +126,7 @@ def preprocess_batch(images: np.ndarray) -> np.ndarray:
 # Resumable extraction
 # ---------------------------------------------------------------------------
 
+# Purpose:  save progress; see the function docstring for parameters, outputs and validation behavior.
 def _save_progress(done: np.ndarray, path: Path) -> None:
     """Write the progress mask atomically (temp file + rename).
 
@@ -133,6 +139,7 @@ def _save_progress(done: np.ndarray, path: Path) -> None:
     os.replace(tmp, path)
 
 
+# Purpose:  write metadata; see the function docstring for parameters, outputs and validation behavior.
 def _write_metadata(out: Path, n_images: int, done: np.ndarray, failed: dict) -> dict:
     import keras
     import tensorflow as tf
@@ -158,6 +165,8 @@ def _write_metadata(out: Path, n_images: int, done: np.ndarray, failed: dict) ->
     return meta
 
 
+# Purpose: Runs the encoder across image batches and stores feature vectors aligned with image identifiers.
+# Implementation: Caching features avoids recomputing VGG16 outputs for every training epoch and supports resuming interrupted extraction.
 def extract_features(
     image_ids,
     images_dir: str | os.PathLike,
@@ -255,6 +264,7 @@ def extract_features(
 # Loading features in later tasks
 # ---------------------------------------------------------------------------
 
+# Purpose: load features; see the function docstring for parameters, outputs and validation behavior.
 def load_features(
     features_dir: str | os.PathLike = DEFAULT_FEATURES_DIR,
     require_complete: bool = True,
@@ -287,6 +297,7 @@ def load_features(
     return features, {image_id: i for i, image_id in enumerate(ids)}
 
 
+# Purpose: features for ids; see the function docstring for parameters, outputs and validation behavior.
 def features_for_ids(features: np.ndarray, row_of: dict[str, int], image_ids) -> np.ndarray:
     """Stack the feature vectors for ``image_ids`` (e.g. one split) in that order."""
     return features[[row_of[i] for i in image_ids]]
@@ -296,6 +307,7 @@ def features_for_ids(features: np.ndarray, row_of: dict[str, int], image_ids) ->
 # Command line
 # ---------------------------------------------------------------------------
 
+# Purpose: main; see the function docstring for parameters, outputs and validation behavior.
 def main(argv=None) -> None:
     parser = argparse.ArgumentParser(description="Extract VGG16 fc2 features for Flickr8k.")
     parser.add_argument("--data-dir", help="Folder with Images/ and captions.txt (default: data/flickr8k)")

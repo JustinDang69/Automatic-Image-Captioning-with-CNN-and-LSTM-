@@ -39,6 +39,8 @@ FINAL_MODEL_FILE = "caption_model.keras"       # copy of the best model when tra
 STATE_FILE = "training_state.json"
 
 
+# Purpose: Supplies mini-batches with aligned image features, padded caption prefixes and next-token labels.
+# Implementation: Image vectors are fetched by index for each batch, avoiding a full duplicated image-feature array for every caption prefix.
 class CaptionBatches(keras.utils.PyDataset):
     """Get VGG16 vectors only for caption prefixes in the current batch.
 
@@ -82,6 +84,9 @@ class CaptionBatches(keras.utils.PyDataset):
             self.rng.shuffle(self.order)
 
 
+# Purpose: Constructs a two-input caption decoder using precomputed VGG16 features and token prefixes.
+# Implementation: The visual branch projects 4,096 features to 256 units; the text branch converts token IDs into embeddings and an LSTM state.
+# Design rationale: Element-wise fusion requires matching vector widths. The final softmax predicts a distribution over the vocabulary.
 def build_caption_model(vocab_size: int, max_length: int, learning_rate=0.001,
                         embedding_dim=256, lstm_units=256, dropout=0.4,
                         mask_padding=False):
@@ -133,6 +138,7 @@ def build_caption_model(vocab_size: int, max_length: int, learning_rate=0.001,
     return model
 
 
+# Purpose: prepare batches; see the function docstring for parameters, outputs and validation behavior.
 def prepare_batches(prepared, features, row_of, split, batch_size=128, seed=42,
                     max_images=None):
     """Fit labels/tokenizer on train only; train/val use identical vocabulary.
@@ -158,6 +164,7 @@ def prepare_batches(prepared, features, row_of, split, batch_size=128, seed=42,
                           shuffle=(split == "train"), seed=seed), len(targets)
 
 
+# Purpose: plot training loss; see the function docstring for parameters, outputs and validation behavior.
 def plot_training_loss(history, path):
     """Save a report-ready training/validation loss graph."""
     import matplotlib
@@ -181,6 +188,7 @@ def plot_training_loss(history, path):
 # Resumable checkpoints
 # ---------------------------------------------------------------------------
 
+# Purpose:  atomic write text; see the function docstring for parameters, outputs and validation behavior.
 def _atomic_write_text(path: Path, text: str) -> None:
     """Write via a temporary file + rename, so a crash never leaves a half-written file."""
     tmp = path.with_name(path.name + ".tmp")
@@ -188,12 +196,14 @@ def _atomic_write_text(path: Path, text: str) -> None:
     os.replace(tmp, path)
 
 
+# Purpose:  atomic save model; see the function docstring for parameters, outputs and validation behavior.
 def _atomic_save_model(model, path: Path) -> None:
     tmp = path.with_name("tmp_" + path.name)   # must still end in .keras
     model.save(tmp)
     os.replace(tmp, path)
 
 
+# Purpose: load training state; see the function docstring for parameters, outputs and validation behavior.
 def load_training_state(output_dir) -> dict | None:
     """Return the saved training state, or None if this is a fresh run."""
     path = Path(output_dir) / STATE_FILE
@@ -202,6 +212,8 @@ def load_training_state(output_dir) -> dict | None:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+# Purpose: Maintains checkpoint, validation and callback state across interrupted training runs.
+# Implementation: Persisting the model and progress after each epoch allows training to continue after a runtime disconnection.
 class ResumableTraining(keras.callbacks.Callback):
     """Checkpointing, early stopping and learning-rate reduction that survive restarts.
 
@@ -277,6 +289,7 @@ class ResumableTraining(keras.callbacks.Callback):
         save_history(self.history, self.out)
 
 
+# Purpose: save history; see the function docstring for parameters, outputs and validation behavior.
 def save_history(history, out: Path) -> None:
     """Write history.json, training_history.csv and training_loss.png."""
     _atomic_write_text(out / "history.json", json.dumps(history, indent=2))
@@ -293,6 +306,8 @@ def save_history(history, out: Path) -> None:
 # Training entry point
 # ---------------------------------------------------------------------------
 
+# Purpose: Loads prepared captions and cached visual features, configures batches, then fits the caption decoder.
+# Implementation: The saved checkpoint is selected using validation performance rather than the final training epoch.
 def train(data_dir=None, features_dir=DEFAULT_FEATURES_DIR, output_dir="models/lstm",
           epochs=20, batch_size=128, learning_rate=0.001, dropout=0.4,
           patience=4, seed=42, min_count=1, resume=True, max_images=None,
@@ -378,6 +393,7 @@ def train(data_dir=None, features_dir=DEFAULT_FEATURES_DIR, output_dir="models/l
     return keras.models.load_model(out / BEST_MODEL_FILE), history, prepared
 
 
+# Purpose:  check resume compatible; see the function docstring for parameters, outputs and validation behavior.
 def _check_resume_compatible(saved, current, out, tokenizer):
     """Refuse to resume if the data/model settings changed since the checkpoint."""
     # batch_size and epochs may change between sessions; these may not.
@@ -393,6 +409,7 @@ def _check_resume_compatible(saved, current, out, tokenizer):
             "Use a new output_dir or pass resume=False (--no-resume) to start again.")
 
 
+# Purpose: main; see the function docstring for parameters, outputs and validation behavior.
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Train the Flickr8k LSTM caption decoder")
     parser.add_argument("--data-dir", default=None)

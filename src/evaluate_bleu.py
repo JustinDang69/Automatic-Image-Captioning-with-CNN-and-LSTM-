@@ -24,6 +24,8 @@ from src.decoding_enhancements import validate_top_k
 METHODS = ("top_k", "length_norm")
 
 
+# Purpose: Evaluates generated captions across a held-out test split against multiple human reference captions.
+# Implementation: Corpus BLEU-1 through BLEU-4 use increasing n-gram orders; these scores measure reference overlap rather than factual correctness.
 def evaluate_model(assets, test_dict, strategy='top_k', beam_width=3, top_k=3, alpha=0.7, seed=42,
                    captions=None):
     """Decode every image in ``test_dict`` with one innovation and return BLEU-1..4.
@@ -70,6 +72,7 @@ def evaluate_model(assets, test_dict, strategy='top_k', beam_width=3, top_k=3, a
     return scores
 
 
+# Purpose:  loaded model file; see the function docstring for parameters, outputs and validation behavior.
 def _loaded_model_file(model_dir):
     """The checkpoint load_assets() actually loads (caption_model.keras preferred)."""
     model_dir = Path(model_dir)
@@ -77,6 +80,7 @@ def _loaded_model_file(model_dir):
     return str(preferred if preferred.exists() else model_dir / "best_caption_model.keras")
 
 
+# Purpose:  training summary; see the function docstring for parameters, outputs and validation behavior.
 def _training_summary(model_dir):
     """best_epoch / best_val_loss from training_config.json, if the run folder has it."""
     path = Path(model_dir) / "training_config.json"
@@ -86,6 +90,7 @@ def _training_summary(model_dir):
     return {k: config[k] for k in ("best_epoch", "best_val_loss") if k in config}
 
 
+# Purpose: main; see the function docstring for parameters, outputs and validation behavior.
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Evaluate BLEU for Top-k and Length-Norm")
     parser.add_argument("--model-dir", default="models/lstm", help="Path to trained model and tokenizer")
