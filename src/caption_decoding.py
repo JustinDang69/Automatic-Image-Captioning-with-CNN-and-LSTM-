@@ -35,6 +35,7 @@ from src.feature_extraction import DEFAULT_FEATURES_DIR, FEATURE_DIM, load_featu
 from src.decoding_enhancements import length_normalize_score, top_k_sampling, validate_top_k
 
 
+# Purpose:  special indices; see the function docstring for parameters, outputs and validation behavior.
 def _special_indices(tokenizer, suppress_unk=True):
     """Never generate PAD or startseq; optionally suppress unknown words."""
     banned = {0}
@@ -46,6 +47,7 @@ def _special_indices(tokenizer, suppress_unk=True):
     return banned, tokenizer.word_index["endseq"]
 
 
+# Purpose:  predict distribution; see the function docstring for parameters, outputs and validation behavior.
 def _predict_distribution(model, vectors, prefixes, max_length):
     """One batched model call, compatible with the saved two-input Keras model."""
     features = np.asarray(vectors, dtype=np.float32)
@@ -62,6 +64,7 @@ def _predict_distribution(model, vectors, prefixes, max_length):
     return probs
 
 
+# Purpose:  as feature batch; see the function docstring for parameters, outputs and validation behavior.
 def _as_feature_batch(feature_vector):
     """Accept a single 4096-d feature vector, not an image or a feature matrix."""
     feature = np.asarray(feature_vector, dtype=np.float32)
@@ -70,13 +73,16 @@ def _as_feature_batch(feature_vector):
     return feature.reshape(1, FEATURE_DIM)
 
 
+# Purpose:  join tokens; see the function docstring for parameters, outputs and validation behavior.
 def _join_tokens(indices, tokenizer):
     """Readable caption without special markers."""
     words = [tokenizer.index_word.get(int(i), "<unk>") for i in indices]
     return " ".join(w for w in words if w not in ("startseq", "endseq", "<unk>"))
 
 
-# Q&A: Starting from startseq, repeatedly pick the highest-probability valid next word; stop at endseq or max length. With top_k set, sample among k candidates instead.
+# Purpose: Generates captions autoregressively, choosing one token at a time from model probabilities.
+# Implementation: Without top_k it selects the highest-probability valid token; with top_k it samples from a restricted candidate set.
+# Design rationale: Decoding stops at the end token or at the configured maximum length.
 def greedy_decode(model, feature_vector, tokenizer, max_length, suppress_unk=True,
                   top_k=None, rng=None):
     """Choose the most likely valid next word at every step.
@@ -130,7 +136,9 @@ def greedy_decode(model, feature_vector, tokenizer, max_length, suppress_unk=Tru
     return _join_tokens(generated, tokenizer)
 
 
-# Q&A: Expand candidates ONE WORD at a time and keep the beam_width best sequences based on accumulated log probabilities. alpha > 0 adds length normalization to reduce short-caption bias.
+# Purpose: Maintains a bounded set of candidate token sequences rather than committing to a single greedy path.
+# Implementation: Standard ranking uses cumulative log-probability; alpha > 0 introduces a sequence-length adjustment.
+# Design rationale: Each iteration expands unfinished hypotheses, ranks them and retains at most beam_width candidates.
 def beam_search_decode(model, feature_vector, tokenizer, max_length,
                        beam_width=3, suppress_unk=True, alpha=0.0):
     """Standard beam search ranked by cumulative log probability (no length penalty).
@@ -209,6 +217,7 @@ def beam_search_decode(model, feature_vector, tokenizer, max_length,
     return _join_tokens(best[0][1:], tokenizer)
 
 
+# Purpose:  reference tokens; see the function docstring for parameters, outputs and validation behavior.
 def _reference_tokens(caption):
     """Match the project's caption cleaning without start/end markers."""
     words = clean_caption(caption).split()
@@ -216,6 +225,7 @@ def _reference_tokens(caption):
 
 
 @dataclass
+# Purpose: CaptionAssets; see the function docstring for parameters, outputs and validation behavior.
 class CaptionAssets:
     model: Any
     tokenizer: CaptionTokenizer
@@ -227,7 +237,7 @@ class CaptionAssets:
     references: dict
 
 
-# Q&A: Load saved LSTM model, tokenizer, image feature vectors and test references before inference; all decoders use the SAME trained model.
+# Purpose: load assets; see the function docstring for parameters, outputs and validation behavior.
 def load_assets(model_dir, features_dir=DEFAULT_FEATURES_DIR, data_dir=None):
     """Load the *trained* best decoder, tokenizer, exact splits and Flickr8k data."""
     import keras
@@ -255,6 +265,7 @@ def load_assets(model_dir, features_dir=DEFAULT_FEATURES_DIR, data_dir=None):
                          features, row_of, images_dir, references)
 
 
+# Purpose: decode image; see the function docstring for parameters, outputs and validation behavior.
 def decode_image(assets, image_id, beam_width=3):
     """Generate exactly one greedy and one beam-search caption for an image.
 
@@ -293,6 +304,7 @@ def decode_image(assets, image_id, beam_width=3):
     }
 
 
+# Purpose: example captions; see the function docstring for parameters, outputs and validation behavior.
 def example_captions(assets, num_examples=6, seed=42, beam_width=3,
                      split="test"):
     """Reproducibly sample held-out images; run greedy + ONE beam width."""
@@ -310,6 +322,7 @@ def example_captions(assets, num_examples=6, seed=42, beam_width=3,
             for image_id in chosen]
 
 
+# Purpose: save example figure; see the function docstring for parameters, outputs and validation behavior.
 def save_example_figure(assets, examples, output_file):
     """Figure with the actual image, reference captions and each decoding result."""
     import matplotlib.pyplot as plt
@@ -343,7 +356,7 @@ def save_example_figure(assets, examples, output_file):
     fig.savefig(output_file, dpi=140, bbox_inches="tight")
     plt.close(fig)
 
-# Q&A: Compare generated captions with reference captions; BLEU measures n-gram overlap, not guaranteed factual correctness.
+# Purpose: evaluate bleu; see the function docstring for parameters, outputs and validation behavior.
 def evaluate_bleu(assets, beam_width=3, max_images=None):
     """Compare greedy against a SINGLE beam width using corpus BLEU-1..4.
 
@@ -396,6 +409,7 @@ def evaluate_bleu(assets, beam_width=3, max_images=None):
     }
 
 
+# Purpose: main; see the function docstring for parameters, outputs and validation behavior.
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Flickr8k greedy and beam-search decoding")
     parser.add_argument("--model-dir", default="models/lstm",
