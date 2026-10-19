@@ -76,6 +76,7 @@ def _join_tokens(indices, tokenizer):
     return " ".join(w for w in words if w not in ("startseq", "endseq", "<unk>"))
 
 
+# Q&A: Starting from startseq, repeatedly pick the highest-probability valid next word; stop at endseq or max length. With top_k set, sample among k candidates instead.
 def greedy_decode(model, feature_vector, tokenizer, max_length, suppress_unk=True,
                   top_k=None, rng=None):
     """Choose the most likely valid next word at every step.
@@ -129,6 +130,7 @@ def greedy_decode(model, feature_vector, tokenizer, max_length, suppress_unk=Tru
     return _join_tokens(generated, tokenizer)
 
 
+# Q&A: Expand candidates ONE WORD at a time and keep the beam_width best sequences based on accumulated log probabilities. alpha > 0 adds length normalization to reduce short-caption bias.
 def beam_search_decode(model, feature_vector, tokenizer, max_length,
                        beam_width=3, suppress_unk=True, alpha=0.0):
     """Standard beam search ranked by cumulative log probability (no length penalty).
@@ -225,6 +227,7 @@ class CaptionAssets:
     references: dict
 
 
+# Q&A: Load saved LSTM model, tokenizer, image feature vectors and test references before inference; all decoders use the SAME trained model.
 def load_assets(model_dir, features_dir=DEFAULT_FEATURES_DIR, data_dir=None):
     """Load the *trained* best decoder, tokenizer, exact splits and Flickr8k data."""
     import keras
@@ -340,6 +343,7 @@ def save_example_figure(assets, examples, output_file):
     fig.savefig(output_file, dpi=140, bbox_inches="tight")
     plt.close(fig)
 
+# Q&A: Compare generated captions with reference captions; BLEU measures n-gram overlap, not guaranteed factual correctness.
 def evaluate_bleu(assets, beam_width=3, max_images=None):
     """Compare greedy against a SINGLE beam width using corpus BLEU-1..4.
 
