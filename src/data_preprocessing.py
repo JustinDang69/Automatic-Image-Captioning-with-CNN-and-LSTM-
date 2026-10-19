@@ -84,6 +84,7 @@ def get_dataset_paths(data_dir: str | os.PathLike | None = None) -> tuple[Path, 
     return images_dir, captions_file
 
 
+# Q&A: Read Flickr8k caption annotations and group the five reference captions by image ID. WHY: Image IDs keep descriptions tied to the correct photo.
 def load_captions(captions_file: str | os.PathLike) -> dict[str, list[str]]:
     """Parse ``captions.txt`` into a mapping ``{image_id: [raw caption, ...]}``.
 
@@ -148,6 +149,7 @@ def verify_image_files(image_ids, images_dir: str | os.PathLike) -> None:
 # 4. Caption cleaning
 # ---------------------------------------------------------------------------
 
+# Q&A: Normalize words before training. WHY: Fewer spelling/case variants mean a more consistent vocabulary.
 def clean_caption(caption: str) -> str:
     """Normalise one caption and wrap it in ``startseq ... endseq``.
 
@@ -183,6 +185,7 @@ def clean_captions(captions: dict[str, list[str]]) -> dict[str, list[str]]:
 # 5. Train / validation / test split (by image)
 # ---------------------------------------------------------------------------
 
+# Q&A: Split unique IMAGE IDs (not caption rows) into train/validation/test. WHY: All five captions of an image stay in one split, preventing data leakage.
 def split_image_ids(
     image_ids,
     train_frac: float = 0.8,
@@ -231,6 +234,7 @@ def subset_captions(captions: dict[str, list[str]], image_ids) -> dict[str, list
 # 6-7. Tokenizer and maximum caption length
 # ---------------------------------------------------------------------------
 
+# Q&A: Build a word-to-integer dictionary from TRAINING captions only. WHY: Neural networks need numeric tokens; fitting on training data avoids test leakage.
 class CaptionTokenizer:
     """Word <-> integer mapping built from training captions.
 
@@ -316,6 +320,7 @@ def get_max_length(captions: dict[str, list[str]]) -> int:
 # 8. Next-word training sequences
 # ---------------------------------------------------------------------------
 
+# Q&A: Turn each N-token caption into N-1 next-word examples. seq[:i] = words already seen; seq[i] = target next word; pad on the LEFT to a fixed length.
 def create_sequences(
     captions: dict[str, list[str]],
     tokenizer: CaptionTokenizer,
@@ -390,6 +395,7 @@ class PreparedData:
         (out / "metadata.json").write_text(json.dumps(meta, indent=1), encoding="utf-8")
 
 
+# Q&A: Orchestrate caption loading, cleaning, splitting, tokenization and prefix/target preparation. Explain the sequence of these steps to the tutor.
 def prepare_flickr8k(
     data_dir: str | os.PathLike | None = None,
     seed: int = 42,
