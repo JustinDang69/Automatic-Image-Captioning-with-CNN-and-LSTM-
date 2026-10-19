@@ -54,6 +54,7 @@ METADATA_FILE = "metadata.json"
 # Encoder
 # ---------------------------------------------------------------------------
 
+# Q&A: Load ImageNet-pretrained VGG16 and output its fc2 layer, NOT final 1000-class predictions. WHY: Captions need 4096 general visual features, and frozen weights save training time.
 def build_encoder(weights: str | None = "imagenet"):
     """Return a frozen VGG16 that maps (batch, 224, 224, 3) images to (batch, 4096).
 
@@ -87,6 +88,7 @@ def build_encoder(weights: str | None = "imagenet"):
 # Image loading and VGG16 preprocessing
 # ---------------------------------------------------------------------------
 
+# Q&A: Convert the input image to the RGB/resolution required by the VGG16 encoder. WHY: Inconsistent dimensions cannot be batched into one tensor.
 def load_image(path: str | os.PathLike) -> np.ndarray:
     """Load one image as a float32 RGB array of shape (224, 224, 3), values 0-255.
 
@@ -101,6 +103,7 @@ def load_image(path: str | os.PathLike) -> np.ndarray:
     return img_to_array(img, dtype="float32")
 
 
+# Q&A: Apply VGG16's own preprocess_input (RGB to BGR and ImageNet mean subtraction). WHY: Inputs must match the distribution used during VGG16 pretraining.
 def preprocess_batch(images: np.ndarray) -> np.ndarray:
     """Apply VGG16's own preprocessing to a batch of RGB 0-255 images.
 
@@ -158,6 +161,7 @@ def _write_metadata(out: Path, n_images: int, done: np.ndarray, failed: dict) ->
     return meta
 
 
+# Q&A: Run VGG16 once per image in batches, save reusable 4096-dimensional feature vectors. WHY: The LSTM is trained over many epochs; caching avoids recomputing CNN features.
 def extract_features(
     image_ids,
     images_dir: str | os.PathLike,
@@ -255,6 +259,7 @@ def extract_features(
 # Loading features in later tasks
 # ---------------------------------------------------------------------------
 
+# Q&A: Load cached features and ID mappings. WHY: Each caption training example must access the features of its correct image.
 def load_features(
     features_dir: str | os.PathLike = DEFAULT_FEATURES_DIR,
     require_complete: bool = True,
