@@ -62,6 +62,7 @@ DOWNLOAD_HELP = (
 # 1-3. Loading the raw dataset
 # ---------------------------------------------------------------------------
 
+# Purpose: get dataset paths; see the function docstring for parameters, outputs and validation behavior.
 def get_dataset_paths(data_dir: str | os.PathLike | None = None) -> tuple[Path, Path]:
     """Return ``(images_dir, captions_file)`` and check that both exist.
 
@@ -84,7 +85,7 @@ def get_dataset_paths(data_dir: str | os.PathLike | None = None) -> tuple[Path, 
     return images_dir, captions_file
 
 
-# Q&A: Read Flickr8k caption annotations and group the five reference captions by image ID. WHY: Image IDs keep descriptions tied to the correct photo.
+# Purpose: load captions; see the function docstring for parameters, outputs and validation behavior.
 def load_captions(captions_file: str | os.PathLike) -> dict[str, list[str]]:
     """Parse ``captions.txt`` into a mapping ``{image_id: [raw caption, ...]}``.
 
@@ -129,6 +130,7 @@ def load_captions(captions_file: str | os.PathLike) -> dict[str, list[str]]:
     return captions
 
 
+# Purpose: verify image files; see the function docstring for parameters, outputs and validation behavior.
 def verify_image_files(image_ids, images_dir: str | os.PathLike) -> None:
     """Check that every image ID in the caption file has a matching file.
 
@@ -149,7 +151,7 @@ def verify_image_files(image_ids, images_dir: str | os.PathLike) -> None:
 # 4. Caption cleaning
 # ---------------------------------------------------------------------------
 
-# Q&A: Normalize words before training. WHY: Fewer spelling/case variants mean a more consistent vocabulary.
+# Purpose: clean caption; see the function docstring for parameters, outputs and validation behavior.
 def clean_caption(caption: str) -> str:
     """Normalise one caption and wrap it in ``startseq ... endseq``.
 
@@ -176,6 +178,7 @@ def clean_caption(caption: str) -> str:
     return " ".join([START_TOKEN, *words, END_TOKEN])
 
 
+# Purpose: clean captions; see the function docstring for parameters, outputs and validation behavior.
 def clean_captions(captions: dict[str, list[str]]) -> dict[str, list[str]]:
     """Apply ``clean_caption`` to every caption, keeping the image -> captions grouping."""
     return {image_id: [clean_caption(c) for c in caps] for image_id, caps in captions.items()}
@@ -185,7 +188,8 @@ def clean_captions(captions: dict[str, list[str]]) -> dict[str, list[str]]:
 # 5. Train / validation / test split (by image)
 # ---------------------------------------------------------------------------
 
-# Q&A: Split unique IMAGE IDs (not caption rows) into train/validation/test. WHY: All five captions of an image stay in one split, preventing data leakage.
+# Purpose: Partitions the data by unique image identifiers rather than by caption records.
+# Implementation: Keeping all descriptions of an image within one partition prevents the same image appearing in training and testing.
 def split_image_ids(
     image_ids,
     train_frac: float = 0.8,
@@ -225,6 +229,7 @@ def split_image_ids(
     }
 
 
+# Purpose: subset captions; see the function docstring for parameters, outputs and validation behavior.
 def subset_captions(captions: dict[str, list[str]], image_ids) -> dict[str, list[str]]:
     """Return the captions for the given image IDs only (e.g. one split)."""
     return {image_id: captions[image_id] for image_id in image_ids}
@@ -234,7 +239,8 @@ def subset_captions(captions: dict[str, list[str]], image_ids) -> dict[str, list
 # 6-7. Tokenizer and maximum caption length
 # ---------------------------------------------------------------------------
 
-# Q&A: Build a word-to-integer dictionary from TRAINING captions only. WHY: Neural networks need numeric tokens; fitting on training data avoids test leakage.
+# Purpose: Maps normalized caption words to integer IDs using the training vocabulary.
+# Implementation: Unknown-word and padding handling allow sequences to have a consistent numerical representation.
 class CaptionTokenizer:
     """Word <-> integer mapping built from training captions.
 
@@ -307,6 +313,7 @@ class CaptionTokenizer:
         return tok
 
 
+# Purpose: get max length; see the function docstring for parameters, outputs and validation behavior.
 def get_max_length(captions: dict[str, list[str]]) -> int:
     """Length (in words, including startseq/endseq) of the longest caption.
 
@@ -320,7 +327,9 @@ def get_max_length(captions: dict[str, list[str]]) -> int:
 # 8. Next-word training sequences
 # ---------------------------------------------------------------------------
 
-# Q&A: Turn each N-token caption into N-1 next-word examples. seq[:i] = words already seen; seq[i] = target next word; pad on the LEFT to a fixed length.
+# Purpose: Converts each caption into supervised next-token training examples.
+# Implementation: For index i, the input prefix is seq[:i] and the expected word is seq[i]; a sequence of N tokens creates N-1 examples.
+# Design rationale: Left-padding creates fixed-length inputs while retaining recent words near the last LSTM time steps.
 def create_sequences(
     captions: dict[str, list[str]],
     tokenizer: CaptionTokenizer,
@@ -370,6 +379,7 @@ def create_sequences(
 # ---------------------------------------------------------------------------
 
 @dataclass
+# Purpose: PreparedData; see the function docstring for parameters, outputs and validation behavior.
 class PreparedData:
     """Everything later stages need from data preparation."""
 
@@ -395,7 +405,7 @@ class PreparedData:
         (out / "metadata.json").write_text(json.dumps(meta, indent=1), encoding="utf-8")
 
 
-# Q&A: Orchestrate caption loading, cleaning, splitting, tokenization and prefix/target preparation. Explain the sequence of these steps to the tutor.
+# Purpose: prepare flickr8k; see the function docstring for parameters, outputs and validation behavior.
 def prepare_flickr8k(
     data_dir: str | os.PathLike | None = None,
     seed: int = 42,
