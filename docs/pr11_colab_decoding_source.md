@@ -1,4 +1,4 @@
-# Colab notebook for PR #11: two decoding enhancements
+# Colab notebook: two decoding enhancements
 
 Open [notebooks/06_colab_decoding_enhancements.ipynb](../notebooks/06_colab_decoding_enhancements.ipynb) on the `main` branch (the notebook's `REPO_BRANCH` is `main`). It was added by [PR #12](https://github.com/JustinDang69/Automatic-Image-Captioning-with-CNN-and-LSTM-/pull/12), built on PR #11's decoding source; both are merged into `main`.
 
