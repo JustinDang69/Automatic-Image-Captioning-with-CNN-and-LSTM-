@@ -32,6 +32,7 @@ from src.data_preprocessing import (
     CaptionTokenizer, clean_caption, get_dataset_paths, load_captions,
 )
 from src.feature_extraction import DEFAULT_FEATURES_DIR, FEATURE_DIM, load_features
+from src.decoding_enhancements import length_normalize_score, top_k_sampling, validate_top_k
 
 
 def _special_indices(tokenizer, suppress_unk=True):
@@ -75,43 +76,87 @@ def _join_tokens(indices, tokenizer):
     return " ".join(w for w in words if w not in ("startseq", "endseq", "<unk>"))
 
 
-def greedy_decode(model, feature_vector, tokenizer, max_length, suppress_unk=True):
+def greedy_decode(model, feature_vector, tokenizer, max_length, suppress_unk=True,
+                  top_k=None, rng=None):
     """Choose the most likely valid next word at every step.
 
     Greedy is fast but makes a local decision that cannot be undone.
+
+    Innovation 2 - Top-k sampling (Abdul): if ``top_k`` is set, the next word is
+    instead *sampled* from the ``top_k`` most likely valid words, with their
+    probabilities renormalised to sum to 1 (``decoding_enhancements.top_k_sampling``).
+    PAD, startseq and <unk> are never sampled. ``top_k=None`` (default) is the
+    original greedy baseline, unchanged.
+
+    Args:
+        top_k: None for greedy decoding, or a positive integer k (k=1 is greedy).
+        rng: ``np.random.Generator`` used for Top-k sampling. Create it ONCE per
+            evaluation run, e.g. ``np.random.default_rng(42)``, and pass the same
+            generator for every image: results are then reproducible and each word
+            gets a fresh random draw. If None, an unseeded generator is created for
+            this caption (not reproducible).
     """
     if max_length < 2:
         raise ValueError("max_length must be >= 2")
+    if top_k is not None:
+        validate_top_k(top_k)
+        if rng is None:
+            rng = np.random.default_rng()
     image = _as_feature_batch(feature_vector)
     banned, eos = _special_indices(tokenizer, suppress_unk)
     tokens = [tokenizer.word_index["startseq"]]
     generated = []
+
     for _ in range(max_length - 1):
         probabilities = _predict_distribution(model, image, [tokens], max_length)[0]
-        probabilities[list(banned)] = -1
-        next_id = int(np.argmax(probabilities))
-        if probabilities[next_id] <= 0:
+
+        if top_k is not None:
+            # Banned tokens are excluded inside top_k_sampling, which raises
+            # ValueError if no valid word has a positive probability.
+            next_id = top_k_sampling(probabilities, top_k=top_k, rng=rng, banned_indices=banned)
+        else:
+            probabilities[list(banned)] = -1
+            next_id = int(np.argmax(probabilities))
+
+        if probabilities[next_id] <= 0 and top_k is None:
             raise ValueError("No positive-probability valid next word")
         if next_id == eos:
             break
+
         generated.append(next_id)
         tokens.append(next_id)
+
     return _join_tokens(generated, tokenizer)
 
 
 def beam_search_decode(model, feature_vector, tokenizer, max_length,
-                       beam_width=3, suppress_unk=True):
+                       beam_width=3, suppress_unk=True, alpha=0.0):
     """Standard beam search ranked by cumulative log probability (no length penalty).
 
     At each step, expand up to beam_width promising unfinished hypotheses.
     Finished hypotheses are retained without expanding them. The highest-scoring
     finished or truncated sequence is returned once all beams stop or max length
     is reached. Model calls are batched across active beams.
+
+    Innovation 1 - Length-normalised beam search (Abdul): if ``alpha > 0``,
+    hypotheses are ranked - both when pruning to ``beam_width`` and when choosing
+    the final caption - by ``log_score / length ** alpha``
+    (``decoding_enhancements.length_normalize_score``). ``length`` is the number of
+    tokens in the hypothesis, *including* startseq (and endseq once finished).
+    Summed log probabilities only get more negative as words are added, so
+    standard beam search prefers short captions; dividing by length**alpha
+    reduces that bias. ``alpha=0.0`` (default) is the original standard beam
+    search, unchanged.
+
+    Args:
+        alpha: length-penalty strength, >= 0 (e.g. 0.7). 0 = standard beam search.
     """
     if not isinstance(beam_width, int) or beam_width < 1:
         raise ValueError("beam_width must be a positive integer")
     if max_length < 2:
         raise ValueError("max_length must be >= 2")
+    if alpha < 0:
+        raise ValueError("alpha must be >= 0 (0 = standard beam search)")
 
     image = _as_feature_batch(feature_vector)
     banned, eos = _special_indices(tokenizer, suppress_unk)
@@ -137,8 +182,10 @@ def beam_search_decode(model, feature_vector, tokenizer, max_length,
             if len(valid) == 0:
                 candidates.append((hypothesis[0], hypothesis[1], True))
                 continue
-            k = min(beam_width, len(valid))
-            choices = valid[np.argsort(row[valid])[-k:][::-1]]
+
+            k_limit = min(beam_width, len(valid))
+            choices = valid[np.argsort(row[valid])[-k_limit:][::-1]]
+
             for index in choices:
                 tokens, log_score, _ = hypothesis
                 candidates.append((
@@ -146,10 +193,17 @@ def beam_search_decode(model, feature_vector, tokenizer, max_length,
                     log_score + float(np.log(row[index])),
                     int(index) == eos,
                 ))
-        candidates.sort(key=lambda h: h[1], reverse=True)
+
+        if alpha > 0.0:
+            candidates.sort(key=lambda h: length_normalize_score(h[1], len(h[0]), alpha), reverse=True)
+        else:
+            candidates.sort(key=lambda h: h[1], reverse=True)
+
         hypotheses = candidates[:beam_width]
 
-    best = max(hypotheses, key=lambda h: h[1])
+    # `hypotheses` is sorted by the ranking score above, so [0] is the best one.
+    # With alpha=0 this is identical to the original max(..., key=log score).
+    best = hypotheses[0]
     return _join_tokens(best[0][1:], tokenizer)
 
 
