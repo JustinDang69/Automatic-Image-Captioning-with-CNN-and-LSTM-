@@ -13,16 +13,23 @@ NIT3251 Assessment 2: a CNN (VGG16) encoder + LSTM decoder that generates captio
 ├── src/
 │   ├── data_preprocessing.py        # Flickr8k loading, cleaning, splitting, tokenizer, sequences
 │   ├── feature_extraction.py        # frozen VGG16 (fc2) -> 4,096-d feature per image
-│   └── train_lstm.py                # train separate LSTM decoder from saved features
+│   ├── train_lstm.py                # train separate LSTM decoder from saved features
+│   ├── caption_decoding.py          # greedy + beam search decoding, examples, baseline BLEU
+│   ├── decoding_enhancements.py     # Top-k sampling + length-normalised beam scores
+│   └── evaluate_bleu.py             # 810-image BLEU for the two decoding innovations
 ├── notebooks/
 │   ├── 01_data_preparation.ipynb    # runs and explains the data pipeline
 │   ├── 02_vgg16_feature_extraction.ipynb
 │   ├── 03_lstm_training.ipynb       # train, validate and plot decoder learning
-│   └── 04_colab_lstm_training.ipynb # Colab GPU training with Google Drive checkpoints
+│   ├── 04_colab_lstm_training.ipynb # Colab GPU training with Google Drive checkpoints
+│   └── 05_greedy_beam_decoding_comparison.ipynb  # greedy vs beam caption examples
 ├── tests/
 │   ├── test_data_preprocessing.py
 │   ├── test_feature_extraction.py
-│   └── test_train_lstm.py
+│   ├── test_train_lstm.py
+│   ├── test_caption_decoding.py
+│   ├── test_decoding.py
+│   └── test_decoding_regression.py  # innovations off == approved greedy/beam baseline
 └── data/                            # NOT in Git (see below)
     ├── flickr8k/{Images/, captions.txt}
     ├── processed/                   # splits.json, tokenizer.json, metadata.json
@@ -166,7 +173,7 @@ no BLEU outcomes are claimed yet.
 
 ## Greedy and beam-search caption generation (test images)
 
-After LSTM training, load the **best** saved model, original tokenizer/splits, and extracted VGG16 features. You can run `notebooks/05_greedy_beam_examples.ipynb` in Colab to show the original test image, **all five references**, and generated greedy / beam-3 / beam-5 captions.
+After LSTM training, load the **best** saved model, original tokenizer/splits, and extracted VGG16 features. You can run `notebooks/05_greedy_beam_decoding_comparison.ipynb` in Colab to show the original test image, **all five references**, and generated greedy / beam-3 / beam-5 captions.
 
 Locally from the repository root:
 
@@ -201,4 +208,32 @@ python -m src.evaluate_bleu \
   --output-json /content/drive/MyDrive/NIT3251_captioning/runs/lstm_run1/decoding_results/innovations_topk3_seed42_lnbeam3_alpha0.7.json
 ```
 
-The JSON records the model file, best epoch, image count, parameters, seed, BLEU-1..4 scores, every generated caption and the number of empty captions. Use `--methods top_k` or `--methods length_norm` to run one method. No innovation BLEU scores are claimed until this has been run on the trained checkpoint.
+The JSON records the model file, best epoch, image count, parameters, seed, BLEU-1..4 scores, every generated caption and the number of empty captions. Use `--methods top_k` or `--methods length_norm` to run one method.
+
+## Final test-set results (19 October 2026)
+
+All four decoding strategies were run in Google Colab on the same trained checkpoint
+(`MyDrive/NIT3251_captioning/runs/lstm_run1/caption_model.keras`, best epoch 5, validation loss 3.3437),
+the same saved VGG16 fc2 features, tokenizer (7,702 entries) and maximum caption length (39), on
+**all 810 held-out test images**, each scored against its **five cleaned human references** with
+NLTK corpus BLEU (BLEU-3 weights exactly 1/3). The model was not retrained. Result files are in the
+private Drive run folder (`decoding_results/` and the innovation output folder); they are not in Git.
+
+| Method | Parameters | BLEU-1 | BLEU-2 | BLEU-3 | BLEU-4 |
+|---|---|---:|---:|---:|---:|
+| Greedy | — | 0.5420 | 0.3488 | 0.2141 | 0.1350 |
+| Standard beam search | width 3 | 0.5402 | 0.3480 | 0.2200 | 0.1428 |
+| Top-k sampling (innovation) | k = 3, seed 42 | 0.4553 | 0.2571 | 0.1400 | 0.0771 |
+| Length-normalised beam (innovation) | width 3, alpha 0.7 | 0.5395 | 0.3508 | 0.2236 | 0.1469 |
+
+Reading the results:
+
+- **Length-normalised beam** scores slightly higher than standard beam search on BLEU-2 to BLEU-4
+  (+0.0028, +0.0036, +0.0041) and slightly lower on BLEU-1 (−0.0007). The gains are small and come from
+  a single deterministic run without a significance test, so they are best described as a marginal improvement.
+- **Top-k sampling** is lower on every metric. This is expected: sampling sometimes picks less likely words,
+  which reduces n-gram overlap with the references. It is one seeded sample (seed 42); caption diversity
+  was not measured, so no diversity benefit is claimed.
+- Greedy and standard beam results come from `src/caption_decoding.py`; the innovations use the same
+  decoders with `top_k` / `alpha` enabled. `tests/test_decoding_regression.py` checks that with both options
+  disabled the captions are identical to the approved baseline implementation.
