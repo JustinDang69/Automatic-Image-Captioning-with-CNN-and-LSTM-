@@ -29,18 +29,20 @@ def test_length_normalization():
 def test_top_k_sampling():
     # 1. Test 1D array extraction
     probs_1d = np.array([0.50, 0.30, 0.15, 0.03, 0.02])
-    idx_1d = top_k_sampling(probs_1d, k=3, seed=42)
+    rng = np.random.default_rng(42)
+    idx_1d = top_k_sampling(probs_1d, top_k=3, rng=rng)
     assert idx_1d in [0, 1, 2], "Chosen index must be restricted to the top 3 probabilities."
     assert isinstance(idx_1d, int), "Return type must be a standard Python integer."
     
     # 2. Test 2D array handling (Simulating Keras predict shape)
     probs_2d = np.array([[0.50, 0.30, 0.15, 0.03, 0.02]])
-    idx_2d = top_k_sampling(probs_2d, k=3, seed=42)
+    rng = np.random.default_rng(42)
+    idx_2d = top_k_sampling(probs_2d, top_k=3, rng=rng)
     assert idx_2d == idx_1d, "1D and 2D inputs must yield identical sampling results given the same seed."
     
     # 3. Test invalid token exclusion (masking zero probabilities)
     probs_invalid = np.array([0.0, 0.0, 0.0, 1.0, 0.0])
-    idx_invalid = top_k_sampling(probs_invalid, k=3)
+    idx_invalid = top_k_sampling(probs_invalid, top_k=3)
     assert idx_invalid == 3, "Algorithm must exclude zero probabilities and select the only valid token."
 
 if __name__ == "__main__":
